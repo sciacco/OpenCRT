@@ -4249,6 +4249,7 @@ component ShortcutsDialog inherits DialogFrame {
         { keys: @tr("Ctrl+Tab"), what: @tr("Next tab") },
         { keys: @tr("Ctrl+Shift+Tab"), what: @tr("Previous tab") },
         { keys: root.mac ? @tr("Cmd+1 ... Cmd+9") : @tr("Alt+1 ... Alt+9"), what: @tr("Go to tab 1 to 9") },
+        { keys: root.mac ? @tr("Cmd+W") : "", what: @tr("Close Tab") },
         { keys: root.mac ? @tr("Option+Return") : @tr("Alt+Enter"), what: @tr("Full screen") },
         { keys: @tr("Shift+PageUp, Shift+PageDown"), what: @tr("Scroll back or forward a page") },
         { keys: root.mac ? @tr("Cmd+wheel") : @tr("Ctrl+wheel"), what: @tr("Font size") },
@@ -5573,6 +5574,8 @@ export component MainWindow inherits Window {
             MenuItem {
                 title: @tr("Close Tab");
                 enabled: root.tabs.length > 0;
+                // Slint's Control modifier maps to Command on macOS.
+                shortcut: Platform.os == OperatingSystemType.macos ? @keys(Control + W) : @keys();
                 activated => { root.menu("close-tab"); }
             }
             MenuSeparator { }
