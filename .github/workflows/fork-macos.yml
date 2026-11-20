@@ -1,0 +1,62 @@
+name: Fork macOS build
+
+on:
+  push:
+    branches: [fork/dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: |
+            . -> target
+            crates/opencrt-rdp -> target
+      - name: Build for Apple Silicon
+        run: |
+          test "$(uname -m)" = arm64
+          # Keep the upstream updater from replacing a fork build.
+          cargo build --locked --release -p opencrt --no-default-features
+          cargo build --locked --release --manifest-path crates/opencrt-rdp/Cargo.toml --target-dir target
+      - name: Generate third-party notices
+        run: |
+          cargo install cargo-about --locked --features cli
+          cargo about generate about.hbs -o target/THIRD-PARTY-NOTICES.html
+          cargo about generate -c about.toml --manifest-path crates/opencrt-rdp/Cargo.toml about.hbs -o target/THIRD-PARTY-NOTICES-RDP.html
+      - name: Package and verify the disk image
+        run: |
+          cargo install cargo-bundle --locked
+          cargo bundle --release -p opencrt --bin opencrt --no-default-features
+          bundle=target/release/bundle/osx/OpenCRT.app
+          app="$bundle/Contents/MacOS"
+          install -m 755 target/release/opencrt-rdp target/release/ocrt "$app/"
+          for binary in opencrt opencrt-rdp ocrt; do
+            lipo -verify_arch arm64 "$app/$binary"
+          done
+          test "$(plutil -extract CFBundleExecutable raw "$bundle/Contents/Info.plist")" = opencrt
+          codesign --force --sign - "$app/opencrt-rdp" "$app/ocrt"
+          codesign --force --sign - "$bundle"
+          codesign --verify --strict --deep "$bundle"
+          staging=$(mktemp -d)
+          trap 'rm -rf "$staging"' EXIT
+          ditto "$bundle" "$staging/OpenCRT.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname OpenCRT -srcfolder "$staging" -ov -format UDZO target/release/OpenCRT.dmg
+          hdiutil verify target/release/OpenCRT.dmg
+      - uses: actions/upload-artifact@v7
+        with:
+          name: OpenCRT-macOS-arm64
+          path: target/release/OpenCRT.dmg
+          if-no-files-found: error
