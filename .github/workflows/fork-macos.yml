@@ -43,7 +43,7 @@ jobs:
           app="$bundle/Contents/MacOS"
           install -m 755 target/release/opencrt-rdp target/release/ocrt "$app/"
           for binary in opencrt opencrt-rdp ocrt; do
-            lipo -verify_arch arm64 "$app/$binary"
+            lipo "$app/$binary" -verify_arch arm64
           done
           test "$(plutil -extract CFBundleExecutable raw "$bundle/Contents/Info.plist")" = opencrt
           codesign --force --sign - "$app/opencrt-rdp" "$app/ocrt"
