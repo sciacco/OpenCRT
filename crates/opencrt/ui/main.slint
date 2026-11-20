@@ -2517,7 +2517,7 @@ component ForwardDialog inherits DialogFrame {
     in-out property <string> host-port;
     in-out property <string> application;
     in-out property <string> arguments;
-    in-out property <bool> enabled;
+    in-out property <bool> forward-enabled;
     in-out property <string> allow;
     in property <string> error;
     callback ok();
@@ -2619,7 +2619,7 @@ component ForwardDialog inherits DialogFrame {
         spacing: 8px;
         CheckBox {
             text: @tr("Enabled");
-            checked <=> root.enabled;
+            checked <=> root.forward-enabled;
         }
         Rectangle { horizontal-stretch: 1; }
         DialogButton {
@@ -7178,7 +7178,7 @@ export component MainWindow inherits Window {
         host-port <=> root.fwd-host-port;
         application <=> root.fwd-app;
         arguments <=> root.fwd-args;
-        enabled <=> root.fwd-enabled;
+        forward-enabled <=> root.fwd-enabled;
         allow <=> root.fwd-allow;
         error: root.fwd-error;
         ok => { root.forward-ok(); }
