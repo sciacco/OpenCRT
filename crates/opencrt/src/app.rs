@@ -1875,6 +1875,12 @@ struct Pane {
     zoom: [f32; 2],
 }
 
+impl Pane {
+    fn image_point(&self, x: f32, y: f32) -> (f32, f32) {
+        ((x - self.image[0]) / self.zoom[0], (y - self.image[1]) / self.zoom[1])
+    }
+}
+
 /// Tile `n` panes over a `w` x `h` area: up to 4 side by side (`columns`) or
 /// stacked, more in a near-square grid whose last row shares out its width.
 /// Each tile is `[x, y, width, height]`.
@@ -3322,7 +3328,7 @@ impl App {
             }
         }
         let pane = self.panes.iter().find(|p| p.tab == self.active)?;
-        Some(((x - pane.image[0]) / pane.zoom[0], (y - pane.image[1]) / pane.zoom[1]))
+        Some(pane.image_point(x, y))
     }
 
     fn on_pointer(&mut self, kind: i32, button: i32, x: f32, y: f32, mods: Mods) {
@@ -3445,7 +3451,11 @@ impl App {
 
     /// The wheel acts on the pane under the pointer, active or not.
     fn on_scroll(&mut self, delta_y: f32, x: f32, y: f32, mods: Mods) -> bool {
-        let target = self.panes.iter().find(|p| contains(p.tile, x, y)).map_or(self.active, |p| p.tab);
+        let pane = self.panes.iter().find(|p| contains(p.tile, x, y)).copied();
+        let target = pane.map_or(self.active, |p| p.tab);
+        let (x, y) = pane
+            .or_else(|| self.panes.iter().find(|p| p.tab == target).copied())
+            .map_or((x, y), |p| p.image_point(x, y));
         if target != self.active && self.tabs.get(target).is_some_and(|t| t.screen.is_some()) {
             // An RDP desktop takes the wheel only while it has the keyboard.
             return true;
@@ -3466,7 +3476,7 @@ impl App {
             self.zoom(steps);
             return true;
         }
-        let (_, ch) = self.logical_cell();
+        let (cw, ch) = self.logical_cell();
         let mouse = &mut self.mouse;
         let Some(tab) = self.tabs.get_mut(target) else {
             return false;
@@ -3480,7 +3490,10 @@ impl App {
         let up = lines > 0;
         let mode = tab.terminal.mode();
         if tab.state == State::Connected && mode.intersects(TermMode::MOUSE_MODE) && !mods.shift {
-            let (col, row) = mouse.last_motion.unwrap_or((0, 0));
+            // Wheel events carry their own position, even if no motion was reported.
+            let (cols, rows) = tab.terminal.size();
+            let col = ((x / cw).max(0.0) as usize).min(cols - 1);
+            let row = ((y / ch).max(0.0) as usize).min(rows - 1);
             let code = if up { 64 } else { 65 } + input::modifier_bits(mods);
             let sgr = mode.contains(TermMode::SGR_MOUSE);
             for _ in 0..lines.abs() {
