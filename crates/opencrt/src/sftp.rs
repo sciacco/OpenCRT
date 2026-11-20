@@ -96,17 +96,17 @@ async fn run_on(session: &client::Handle<ssh::SshHandler>, host: &str, commands:
     out(io, &format!("Remote directory: {}\nLocal directory:  {}\n{PROMPT}", cli.remote, cli.local.display()));
 
     let mut editor = LineEditor::default();
-    while let Some(bytes) = io.input.recv().await {
+    'input: while let Some(bytes) = io.input.recv().await {
         for edit in editor.feed(&bytes) {
             match edit {
+                Edit::Eof => break 'input,
                 Edit::Echo(echo) => {
                     let _ = io.output.send(SshEvent::Data(echo));
                 }
                 Edit::Submit(line) => {
                     let args = split_args(&line);
                     if matches!(args.first().map(String::as_str), Some("exit" | "quit" | "bye")) {
-                        let _ = cli.sftp.close().await;
-                        return Ok(());
+                        break 'input;
                     }
                     if let Err(e) = cli.run(&args, io).await {
                         out(io, &format!("{e:#}\n"));
@@ -135,6 +135,7 @@ async fn run_on(session: &client::Handle<ssh::SshHandler>, host: &str, commands:
             }
         }
     }
+    let _ = cli.sftp.close().await;
     Ok(())
 }
 
@@ -830,10 +831,12 @@ enum Edit {
     Submit(String),
     /// Tab: complete the word being typed.
     Complete,
+    /// Ctrl+D at an empty prompt.
+    Eof,
 }
 
 /// Minimal line editing for the `sftp>` prompt: typing, Backspace, Ctrl+U,
-/// Ctrl+C (cancel line), Tab completion and Up/Down history.
+/// Ctrl+C (cancel line), Ctrl+D (EOF), Tab completion and Up/Down history.
 #[derive(Default)]
 struct LineEditor {
     line: String,
@@ -878,6 +881,10 @@ impl LineEditor {
                     self.browsing = None;
                     edits.push(Edit::Echo(b"^C\r\n".to_vec()));
                     edits.push(Edit::Submit(String::new()));
+                }
+                '\u{4}' if self.line.is_empty() => {
+                    edits.push(Edit::Eof);
+                    break;
                 }
                 '\u{15}' => edits.push(Edit::Echo(self.replace(String::new()))),
                 c if c.is_control() => {}
@@ -957,6 +964,16 @@ mod tests {
         // Ctrl+C abandons the line.
         assert_eq!(e.feed(b"\x03"), [Edit::Echo(b"^C\r\n".to_vec()), Edit::Submit(String::new())]);
         assert_eq!(e.line, "");
+    }
+
+    #[test]
+    fn ctrl_d_exits_only_at_an_empty_prompt() {
+        let mut editor = LineEditor::default();
+        editor.feed(b"ls");
+        assert!(editor.feed(b"\x04").is_empty());
+        assert_eq!(editor.line, "ls");
+        editor.feed(b"\x15");
+        assert_eq!(editor.feed(b"\x04"), [Edit::Eof]);
     }
 
     #[test]
