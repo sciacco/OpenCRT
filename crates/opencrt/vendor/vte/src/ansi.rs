@@ -211,6 +211,10 @@ fn parse_rgb_color(color: &[u8]) -> Option<Rgb> {
 
 /// Parse colors in `#r(rrr)g(ggg)b(bbb)` format.
 fn parse_legacy_color(color: &[u8]) -> Option<Rgb> {
+    if !matches!(color.len(), 3 | 6 | 9 | 12) {
+        return None;
+    }
+
     let item_len = color.len() / 3;
 
     // Truncate/Fill to two byte precision.
@@ -2250,6 +2254,8 @@ mod tests {
     fn parse_invalid_legacy_rgb_colors() {
         assert_eq!(xparse_color(b"#"), None);
         assert_eq!(xparse_color(b"#f"), None);
+        assert_eq!(xparse_color(b"#1234"), None);
+        assert_eq!(xparse_color(b"#123451234512345"), None);
     }
 
     #[test]
